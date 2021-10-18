@@ -1,0 +1,192 @@
+version: '3.2'
+
+services:
+  # Zookeeper is required to ensure Kafka works.
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "22181:2181"
+  
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  consul:
+      image: bitnami/consul:latest
+      networks:
+        - consul
+      ports:
+        - '8300:8300'
+        - '8301:8301'
+        - '8301:8301/udp'
+        - '8500:8500'
+        - '8600:8600'
+        - '8600:8600/udp'
+
+  zipkin:
+    image: ghcr.io/openzipkin/zipkin-slim:${TAG:-latest}
+    container_name: zipkin
+    # Environment settings are defined here https://github.com/openzipkin/zipkin/blob/master/zipkin-server/README.md#environment-variables
+    environment:
+      - STORAGE_TYPE=mem
+      # Point the zipkin at the storage backend
+      - MYSQL_HOST=mysql
+      # Uncomment to enable self-tracing
+      # - SELF_TRACING_ENABLED=true
+      # Uncomment to increase heap size
+      # - JAVA_OPTS=-Xms128m -Xmx128m -XX:+ExitOnOutOfMemoryError
+    ports:
+      # Port used for the Zipkin UI and HTTP Api
+      - "9411:9411"
+    # Uncomment to enable debug logging
+    # command: --logging.level.zipkin2=DEBUG
+
+  elasticsearch:
+    image: elasticsearch:7.7.0
+    container_name: elasticsearch
+    hostname: elasticsearch
+    environment:
+      - "discovery.type=single-node"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - elk
+
+  kibana:
+    image: kibana:7.7.0
+    container_name: kibana
+    hostname: kibana
+    ports:
+      - "5601:5601"
+    links:
+      - elasticsearch:elasticsearch
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk
+
+  logstash:
+    image: logstash:7.7.0
+    container_name: logstash
+    hostname: logstash
+    ports:
+      - "9600:9600"
+      - "8089:8089"
+    volumes:
+      - "./logstash:/usr/share/logstash/pipeline/"
+    links:
+      - elasticsearch:elasticsearch
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk
+
+  mysql-keycloak:
+    image: mysql:5.7
+    volumes:
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: SECURE_PASSWORD
+      MYSQL_DATABASE: keycloak
+      MYSQL_USER: keycloak
+      MYSQL_PASSWORD: SECURE_PASSWORD
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      DB_VENDOR: MYSQL
+      DB_ADDR: mysql-keycloak
+      DB_DATABASE: keycloak
+      DB_USER: keycloak
+      DB_PASSWORD: SECURE_PASSWORD
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: SECURE_PASSWORD
+      # Uncomment the line below if you want to specify JDBC parameters. The parameter below is just an example, and it shouldn't be used in production without knowledge. It is highly recommended that you read the MySQL JDBC driver documentation in order to use it.
+      #JDBC_PARAMS: "connectTimeout=30000"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql-keycloak
+
+  prometheus:
+    image: prom/prometheus:v2.17.1
+    container_name: prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    expose:
+      - 9090
+    networks:
+      - monitor-net
+    labels:
+      org.label-schema.group: "monitoring"
+
+  grafana:
+    image: grafana/grafana:6.7.2
+    container_name: grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+    expose:
+      - 3000
+    networks:
+      - monitor-net
+    labels:
+      org.label-schema.group: "monitoring"
+
+  alertmanager:
+    image: prom/alertmanager:v0.20.0
+    container_name: alertmanager
+    volumes:
+      - ./alertmanager:/etc/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/config.yml'
+      - '--storage.path=/alertmanager'
+    restart: unless-stopped
+    expose:
+      - 9093
+    networks:
+      - monitor-net
+    labels:
+      org.label-schema.group: "monitoring"
+
+volumes:
+  mysql_data:
+    driver: local
+  prometheus_data: {}
+  grafana_data: {}
+
+networks:
+  monitor-net:
+    driver: bridge
+  consul:
+    driver: bridge
+  elk:
+    driver: bridge
