@@ -87,7 +87,10 @@ services:
       - "9600:9600"
       - "8089:8089"
     volumes:
-      - "./logstash:/usr/share/logstash/pipeline/"
+      - type: bind
+        source: ./logstash/config/logstash.yml
+        target: /usr/share/logstash/config/logstash.yml
+        read_only: true
     links:
       - elasticsearch:elasticsearch
     depends_on:
