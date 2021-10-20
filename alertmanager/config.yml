@@ -36,7 +36,7 @@ route:
 receivers:
   - name: "slack"
     slack_configs:
-      - api_url: 'https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXX/xxxxxxxxxxxxxxxxxxxxxxxxxxx'
+      - api_url: '' # Slack Webhook Handler URL
         send_resolved: true
         channel: 'monitoring'
         text: "{{ range .Alerts }}<!channel> {{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}"

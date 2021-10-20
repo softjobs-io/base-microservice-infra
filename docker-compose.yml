@@ -98,33 +98,6 @@ services:
     networks:
       - elk
 
-  mysql-keycloak:
-    image: mysql:5.7
-    volumes:
-      - mysql_data:/var/lib/mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: SECURE_PASSWORD
-      MYSQL_DATABASE: keycloak
-      MYSQL_USER: keycloak
-      MYSQL_PASSWORD: SECURE_PASSWORD
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:latest
-    environment:
-      DB_VENDOR: MYSQL
-      DB_ADDR: mysql-keycloak
-      DB_DATABASE: keycloak
-      DB_USER: keycloak
-      DB_PASSWORD: SECURE_PASSWORD
-      KEYCLOAK_USER: admin
-      KEYCLOAK_PASSWORD: SECURE_PASSWORD
-      # Uncomment the line below if you want to specify JDBC parameters. The parameter below is just an example, and it shouldn't be used in production without knowledge. It is highly recommended that you read the MySQL JDBC driver documentation in order to use it.
-      #JDBC_PARAMS: "connectTimeout=30000"
-    ports:
-      - "8080:8080"
-    depends_on:
-      - mysql-keycloak
-
   prometheus:
     image: prom/prometheus:v2.17.1
     container_name: prometheus
